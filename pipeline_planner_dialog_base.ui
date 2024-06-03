@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>703</width>
-    <height>397</height>
+    <width>707</width>
+    <height>406</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -27,17 +27,17 @@
    </property>
    <column>
     <property name="text">
-     <string>Neue Spalte</string>
-    </property>
-   </column>
-   <column>
-    <property name="text">
      <string>Constraint</string>
     </property>
    </column>
    <column>
     <property name="text">
      <string>ID</string>
+    </property>
+   </column>
+   <column>
+    <property name="text">
+     <string>Statuss</string>
     </property>
    </column>
    <column>

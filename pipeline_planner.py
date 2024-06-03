@@ -21,9 +21,23 @@
  *                                                                         *
  ***************************************************************************/
 """
-from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication
+from qgis.PyQt.QtCore import QSettings, QTranslator, QCoreApplication, Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import (
+    QTableWidgetItem,
+    QMessageBox,
+    QAction,
+)
+from qgis.core import QgsProject
+
+from qgis.gui import (
+    QgsMapToolEmitPoint,
+    QgsMapCanvas,
+    QgsVertexMarker,
+    QgsMapCanvasItem,
+    QgsMapMouseEvent,
+    QgsRubberBand,
+)
 
 # Initialize Qt resources from file resources.py
 from .resources import *
@@ -45,9 +59,15 @@ class PipelinePlannner:
         """
         # Save reference to the QGIS interface
         self.iface = iface
+        self.canvas = self.iface.mapCanvas()
         # initialize plugin directory
         self.plugin_dir = os.path.dirname(__file__)
         # initialize locale
+        self.addPipelinePoint = QgsMapToolEmitPoint(self.canvas)
+        self.rbPipeline = QgsRubberBand(self.canvas) 
+        self.rbPipeline.setColor(Qt.red)
+        self.rbPipeline.setWidth(4)
+        
         locale = QSettings().value('locale/userLocale')[0:2]
         locale_path = os.path.join(
             self.plugin_dir,
@@ -66,7 +86,11 @@ class PipelinePlannner:
         # Check if plugin was started the first time in current QGIS session
         # Must be set in initGui() to survive plugin reloads
         self.first_start = None
-
+        self.dlg = PipelinePlannnerDialog()
+        self.dlg.tbllmpacts.setColumnWidth(1, 75)
+        self.dlg.tbllmpacts.setColumnWidth(2, 25)
+        self.dlg.tbllmpacts.setColumnWidth(3, 75)
+        
     # noinspection PyMethodMayBeStatic
     def tr(self, message):
         """Get the translation for a string using Qt translation API.
@@ -169,7 +193,7 @@ class PipelinePlannner:
 
         # will be set False in run()
         self.first_start = True
-
+        self.addPipelinePoint.canvasClicked.connect(self.evaluatePipeline)
 
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
@@ -182,19 +206,61 @@ class PipelinePlannner:
 
     def run(self):
         """Run method that performs all the real work"""
+        self.canvas.setMapTool(self.addPipelinePoint)
 
-        # Create the dialog with elements (after translation) and keep reference
-        # Only create GUI ONCE in callback, so that it will only load when the plugin is started
-        if self.first_start == True:
-            self.first_start = False
-            self.dlg = PipelinePlannnerDialog()
+    def evaluatePipeline(self, point, button):
+        if button == Qt.LeftButton:
+            self.rbPipeline.addPoint(point)
+            self.rbPipeline.show()
+        elif button == Qt.RightButton:
+            pipeline =  self.rbPipeline.asGeometry()
+            self.dlg.tbllmpacts.setRowCount(0)
+            
+            lyrRaptor = QgsProject.instance().mapLayersByName("raptor_buffer")[0]        
+            raptors = lyrRaptor.getFeatures(pipeline.boundingBox())
+            for raptor in raptors:
+                valConstraint = raptor.attribute("recentspec")
+                valID = raptor.attribute("Nest_ID")
+                valStatuss = raptor.attribute("recentstat")
+                valDistance = pipeline.distance(raptor.geometry().centroid())
+                if raptor.geometry().intersects(pipeline):
+                    row = self.dlg.tbllmpacts.rowCount()
+                    self.dlg.tbllmpacts.insertRow(row)
+                    self.dlg.tbllmpacts.setItem(row, 0, QTableWidgetItem(valConstraint))
+                    self.dlg.tbllmpacts.setItem(row, 1, QTableWidgetItem(str(valID)))                
+                    self.dlg.tbllmpacts.setItem(row, 2, QTableWidgetItem(valStatuss))               
+                    self.dlg.tbllmpacts.setItem(row, 3, QTableWidgetItem("{:4.5f}".format(valDistance)))
+            
+            lyrEagle = QgsProject.instance().mapLayersByName("baea_buffer")[0]        
+            eagles = lyrEagle.getFeatures(pipeline.boundingBox())
+            for eagle in eagles:
+                valConstraint = "baea NEST"
+                valID = eagle.attribute("nest_id")
+                valStatuss = eagle.attribute("status")
+                valDistance = pipeline.distance(eagle.geometry().centroid())
+                if eagle.geometry().intersects(pipeline):
+                    row = self.dlg.tbllmpacts.rowCount()
+                    self.dlg.tbllmpacts.insertRow(row)
+                    self.dlg.tbllmpacts.setItem(row, 0, QTableWidgetItem(valConstraint))
+                    self.dlg.tbllmpacts.setItem(row, 1, QTableWidgetItem(str(valID)))                
+                    self.dlg.tbllmpacts.setItem(row, 2, QTableWidgetItem(valStatuss))               
+                    self.dlg.tbllmpacts.setItem(row, 3, QTableWidgetItem("{:4.5f}".format(valDistance)))
 
-        # show the dialog
-        self.dlg.show()
-        # Run the dialog event loop
-        result = self.dlg.exec_()
-        # See if OK was pressed
-        if result:
-            # Do something useful here - delete the line containing pass and
-            # substitute with your code.
-            pass
+            lyrBUOWL = QgsProject.instance().mapLayersByName("buowl_buffer")[0]        
+            buowls = lyrBUOWL.getFeatures(pipeline.boundingBox())
+            for buowl in buowls:
+                valConstraint = "BUOWL Habitat"
+                valID = buowl.attribute("habitat_id")
+                valStatuss = buowl.attribute("recentstat")
+                valDistance = pipeline.distance(buowl.geometry().buffer(-0.001, 5))
+                if buowl.geometry().intersects(pipeline):
+                    row = self.dlg.tbllmpacts.rowCount()
+                    self.dlg.tbllmpacts.insertRow(row)
+                    self.dlg.tbllmpacts.setItem(row, 0, QTableWidgetItem(valConstraint))
+                    self.dlg.tbllmpacts.setItem(row, 1, QTableWidgetItem(str(valID)))                
+                    self.dlg.tbllmpacts.setItem(row, 2, QTableWidgetItem(valStatuss))               
+                    self.dlg.tbllmpacts.setItem(row, 3, QTableWidgetItem("{:4.5f}".format(valDistance)))            
+            self.dlg.show()
+            
+            self.rbPipeline.reset()
+            
